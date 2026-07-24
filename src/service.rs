@@ -78,6 +78,11 @@ pub const CREST: ServiceSpec = ServiceSpec {
 };
 
 pub const INITIAL_SERVICES: [ServiceSpec; SERVICE_COUNT] = [SLOPE_NET, CORINTH, CREST];
+/// Services whose exact measured images are present in the current boot image.
+///
+/// The broader catalog remains useful for capability policy, but the
+/// supervisor must never attempt to launch a name the kernel cannot resolve.
+pub const BOOT_SERVICES: [ServiceSpec; 1] = [CREST];
 
 /// Fixed-capacity dependency graph. Bit N represents service N.
 #[derive(Clone, Copy)]
@@ -92,10 +97,6 @@ impl ArachneMatrix {
             dependencies: [0; MAXIMUM_SERVICES],
             active_state_mask: 0,
         }
-    }
-
-    pub const fn add_dependency(&mut self, target: ServiceId, required: ServiceId) {
-        self.dependencies[target.index()] |= 1_u16 << required.index();
     }
 
     #[inline(always)]
@@ -215,7 +216,7 @@ impl Thermodynamics {
 
         let mut selected = None;
         let mut maximum_mass = 0;
-        for spec in INITIAL_SERVICES {
+        for spec in BOOT_SERVICES {
             if starting_mask & (1_u16 << spec.id.index()) == 0 {
                 continue;
             }
@@ -271,9 +272,7 @@ pub struct Supervisor {
 
 impl Supervisor {
     pub const fn new() -> Self {
-        let mut matrix = ArachneMatrix::new();
-        matrix.add_dependency(ServiceId::Corinth, ServiceId::SlopeNet);
-        matrix.add_dependency(ServiceId::Crest, ServiceId::Corinth);
+        let matrix = ArachneMatrix::new();
         Self {
             tick: 0,
             mode: SupervisorMode::Normal,
@@ -320,7 +319,7 @@ impl Supervisor {
             return SupervisorAction::Deadlock { service };
         }
 
-        for spec in INITIAL_SERVICES {
+        for spec in BOOT_SERVICES {
             let status = &mut self.status[spec.id.index()];
             if status.state == ServiceState::Failed && spec.critical {
                 self.mode = SupervisorMode::Recovery {
@@ -382,7 +381,7 @@ impl Supervisor {
         );
         PANOPTICON.total_crashes.fetch_add(1, Ordering::Relaxed);
 
-        for dependent in INITIAL_SERVICES {
+        for dependent in BOOT_SERVICES {
             if self.status[dependent.id.index()].state == ServiceState::Running
                 && !self.matrix.can_start(dependent.id)
             {
@@ -412,7 +411,7 @@ impl Supervisor {
 
     fn starting_mask(&self) -> u16 {
         let mut mask = 0_u16;
-        for spec in INITIAL_SERVICES {
+        for spec in BOOT_SERVICES {
             if self.status[spec.id.index()].state == ServiceState::Starting {
                 mask |= 1_u16 << spec.id.index();
             }
@@ -447,55 +446,23 @@ mod tests {
     }
 
     #[test]
-    fn starts_corinth_before_crest() {
+    fn starts_only_the_measured_boot_service() {
         let mut supervisor = Supervisor::new();
-        assert_eq!(supervisor.tick(), SupervisorAction::Start(SLOPE_NET));
-        supervisor.record_started(ServiceId::SlopeNet).unwrap();
-        assert_eq!(supervisor.tick(), SupervisorAction::Start(CORINTH));
-        supervisor.record_started(ServiceId::Corinth).unwrap();
         assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
         supervisor.record_started(ServiceId::Crest).unwrap();
         assert_eq!(supervisor.tick(), SupervisorAction::Idle);
     }
 
     #[test]
-    fn exhausted_corinth_restarts_enter_recovery() {
+    fn unscheduled_catalog_entries_do_not_block_crest() {
         let mut supervisor = Supervisor::new();
-        assert_eq!(supervisor.tick(), SupervisorAction::Start(SLOPE_NET));
-        supervisor.record_started(ServiceId::SlopeNet).unwrap();
-        assert_eq!(supervisor.tick(), SupervisorAction::Start(CORINTH));
-        for restart in 0..=CORINTH.maximum_restarts {
-            supervisor
-                .record_failure(ServiceId::Corinth, FailureReason::Exited(-1))
-                .unwrap();
-            if restart < CORINTH.maximum_restarts {
-                assert_eq!(
-                    advance_until_action(&mut supervisor),
-                    SupervisorAction::Start(CORINTH)
-                );
-            }
-        }
-        assert_eq!(
-            supervisor.tick(),
-            SupervisorAction::EnterRecovery {
-                failed_service: ServiceId::Corinth
-            }
-        );
-        assert_eq!(
-            supervisor.mode(),
-            SupervisorMode::Recovery {
-                failed_service: ServiceId::Corinth
-            }
-        );
+        assert!(supervisor.matrix.can_start(ServiceId::Crest));
+        assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
     }
 
     #[test]
     fn exhausted_crest_restarts_degrade_without_recovery() {
         let mut supervisor = Supervisor::new();
-        assert_eq!(supervisor.tick(), SupervisorAction::Start(SLOPE_NET));
-        supervisor.record_started(ServiceId::SlopeNet).unwrap();
-        assert_eq!(supervisor.tick(), SupervisorAction::Start(CORINTH));
-        supervisor.record_started(ServiceId::Corinth).unwrap();
         assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
         for restart in 0..=CREST.maximum_restarts {
             supervisor
@@ -517,27 +484,16 @@ mod tests {
     }
 
     #[test]
-    fn arachne_blocks_and_cascades_dependencies() {
+    fn crest_failure_does_not_leave_a_false_active_bit() {
         let mut supervisor = Supervisor::new();
-        assert!(!supervisor.matrix.can_start(ServiceId::Corinth));
-        assert!(!supervisor.matrix.can_start(ServiceId::Crest));
-        assert_eq!(supervisor.tick(), SupervisorAction::Start(SLOPE_NET));
-        supervisor.record_started(ServiceId::SlopeNet).unwrap();
-        assert!(supervisor.matrix.can_start(ServiceId::Corinth));
-        assert_eq!(supervisor.tick(), SupervisorAction::Start(CORINTH));
-        supervisor.record_started(ServiceId::Corinth).unwrap();
         assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
         supervisor.record_started(ServiceId::Crest).unwrap();
-        assert_eq!(supervisor.active_service_mask(), 0b111);
+        assert_eq!(supervisor.active_service_mask(), 0b100);
 
         supervisor
-            .record_failure(ServiceId::Corinth, FailureReason::Unresponsive)
+            .record_failure(ServiceId::Crest, FailureReason::Unresponsive)
             .unwrap();
-        assert_eq!(supervisor.active_service_mask(), 0b001);
-        assert_eq!(
-            supervisor.status(ServiceId::Crest).state,
-            ServiceState::Stopped
-        );
+        assert_eq!(supervisor.active_service_mask(), 0);
     }
 
     #[test]
@@ -555,14 +511,14 @@ mod tests {
     #[test]
     fn thermodynamics_targets_only_a_stalled_start() {
         let mut supervisor = Supervisor::new();
-        assert_eq!(supervisor.tick(), SupervisorAction::Start(SLOPE_NET));
+        assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
         for _ in 0..Thermodynamics::DEADLOCK_TICKS - 1 {
             assert_eq!(supervisor.tick(), SupervisorAction::Idle);
         }
         assert_eq!(
             supervisor.tick(),
             SupervisorAction::Deadlock {
-                service: ServiceId::SlopeNet
+                service: ServiceId::Crest
             }
         );
     }

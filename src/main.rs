@@ -7,7 +7,7 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 use push::aegis::{BrokerError, HardwareCapabilityBroker, evaluate_knot};
 use push::gordian::{CapabilityHandle, CapabilityKind, service_knot};
-use push::service::{FailureReason, ServiceId, Supervisor, SupervisorAction};
+use push::service::{BOOT_SERVICES, FailureReason, ServiceId, Supervisor, SupervisorAction};
 use slope::kairos::{WorkloadClass, features};
 use slope::runtime::ProcessRuntime;
 use slope::thermogenesis::{ThermalGuard, ThermalPage, ThermalPolicy, throttled_batch_size};
@@ -134,8 +134,13 @@ pub extern "C" fn push_start_with_stack(stack_ptr: *const u8) -> ! {
     let mut supervisor = Supervisor::new();
     let mut broker = UnavailableBroker;
     loop {
-        for service in [ServiceId::SlopeNet, ServiceId::Corinth, ServiceId::Crest] {
-            let _ = evaluate_knot(service, &supervisor, service_knot(service), &mut broker);
+        for service in BOOT_SERVICES {
+            let _ = evaluate_knot(
+                service.id,
+                &supervisor,
+                service_knot(service.id),
+                &mut broker,
+            );
         }
         match supervisor.tick() {
             SupervisorAction::Start(service) => {
@@ -146,9 +151,13 @@ pub extern "C" fn push_start_with_stack(stack_ptr: *const u8) -> ! {
                     supervisor.status(service.id).restart_count,
                     service.maximum_restarts,
                 );
-                match slope::process::spawn(0, service.id as u8) {
+                match slope::process::spawn_service(service.id as u16) {
                     Ok(pid) => {
                         push::push_log!("[PID 1] spawned service {:?} as PID {}", service.id, pid);
+                        if supervisor.record_started(service.id).is_err() {
+                            let _ = supervisor
+                                .record_failure(service.id, FailureReason::LaunchRejected);
+                        }
                     }
                     Err(_) => {
                         let _ =

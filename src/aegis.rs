@@ -93,22 +93,20 @@ mod tests {
         }
     }
 
-    fn running_corinth() -> Supervisor {
+    fn running_crest() -> Supervisor {
         let mut supervisor = Supervisor::new();
         assert!(matches!(supervisor.tick(), SupervisorAction::Start(_)));
-        supervisor.record_started(ServiceId::SlopeNet).unwrap();
-        assert!(matches!(supervisor.tick(), SupervisorAction::Start(_)));
-        supervisor.record_started(ServiceId::Corinth).unwrap();
+        supervisor.record_started(ServiceId::Crest).unwrap();
         supervisor
     }
 
     #[test]
-    fn grants_an_opaque_network_handle_to_running_corinth() {
-        let supervisor = running_corinth();
+    fn grants_an_opaque_gpu_handle_to_running_crest() {
+        let supervisor = running_crest();
         let knot = GordianKnot::new();
-        knot.request(1, ServiceId::Corinth, CapabilityKind::Network)
+        knot.request(1, ServiceId::Crest, CapabilityKind::GpuDrm)
             .unwrap();
-        let result = evaluate_knot(ServiceId::Corinth, &supervisor, &knot, &mut Broker).unwrap();
+        let result = evaluate_knot(ServiceId::Crest, &supervisor, &knot, &mut Broker).unwrap();
         assert!(matches!(result, Evaluation::Granted(_)));
         assert!(matches!(
             knot.response(1).unwrap(),
@@ -118,13 +116,13 @@ mod tests {
     }
 
     #[test]
-    fn denies_gpu_escalation_by_corinth() {
-        let supervisor = running_corinth();
+    fn denies_network_escalation_by_crest() {
+        let supervisor = running_crest();
         let knot = GordianKnot::new();
-        knot.request(2, ServiceId::Corinth, CapabilityKind::GpuDrm)
+        knot.request(2, ServiceId::Crest, CapabilityKind::Network)
             .unwrap();
         assert_eq!(
-            evaluate_knot(ServiceId::Corinth, &supervisor, &knot, &mut Broker).unwrap(),
+            evaluate_knot(ServiceId::Crest, &supervisor, &knot, &mut Broker).unwrap(),
             Evaluation::Denied(DenialReason::PolicyRejected)
         );
     }
