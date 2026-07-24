@@ -96,7 +96,7 @@ mod tests {
     fn running_crest() -> Supervisor {
         let mut supervisor = Supervisor::new();
         assert!(matches!(supervisor.tick(), SupervisorAction::Start(_)));
-        supervisor.record_started(ServiceId::Crest).unwrap();
+        supervisor.record_started(ServiceId::Crest, 2).unwrap();
         supervisor
     }
 

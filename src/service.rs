@@ -239,6 +239,7 @@ impl Default for Thermodynamics {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ServiceStatus {
     pub state: ServiceState,
+    pub pid: Option<u32>,
     pub restart_count: u8,
     pub next_start_tick: u64,
     pub last_failure: Option<FailureReason>,
@@ -247,6 +248,7 @@ pub struct ServiceStatus {
 impl ServiceStatus {
     const STOPPED: Self = Self {
         state: ServiceState::Stopped,
+        pid: None,
         restart_count: 0,
         next_start_tick: 0,
         last_failure: None,
@@ -347,12 +349,19 @@ impl Supervisor {
         SupervisorAction::Idle
     }
 
-    pub fn record_started(&mut self, service: ServiceId) -> Result<(), SupervisorError> {
+    /// Binds a successfully launched, nonzero process identity to one
+    /// Starting service. The PID is retained so exit notifications cannot be
+    /// confused across service restarts.
+    pub fn record_started(&mut self, service: ServiceId, pid: u32) -> Result<(), SupervisorError> {
+        if pid == 0 || self.pid_is_active(pid) {
+            return Err(SupervisorError::InvalidProcessIdentity);
+        }
         let status = &mut self.status[service.index()];
         if status.state != ServiceState::Starting {
             return Err(SupervisorError::InvalidTransition);
         }
         status.state = ServiceState::Running;
+        status.pid = Some(pid);
         status.last_failure = None;
         self.matrix.mark_running(service);
         self.progress_generation = self.progress_generation.wrapping_add(1);
@@ -360,6 +369,27 @@ impl Supervisor {
             .active_service_mask
             .store(self.matrix.active_state_mask(), Ordering::Release);
         Ok(())
+    }
+
+    /// Attributes a reaped child to its exact currently-running service.
+    /// An exited service is always a failed service from the supervisor's
+    /// perspective, including exit status zero: availability is declared by
+    /// a still-live measured process, not by a past successful exit.
+    pub fn record_child_exit(
+        &mut self,
+        pid: u32,
+        status: i32,
+    ) -> Result<ServiceId, SupervisorError> {
+        if pid == 0 {
+            return Err(SupervisorError::UnknownProcess);
+        }
+        let service = INITIAL_SERVICES
+            .iter()
+            .find(|spec| self.status[spec.id.index()].pid == Some(pid))
+            .map(|spec| spec.id)
+            .ok_or(SupervisorError::UnknownProcess)?;
+        self.record_failure(service, FailureReason::Exited(status))?;
+        Ok(service)
     }
 
     pub fn record_failure(
@@ -395,6 +425,7 @@ impl Supervisor {
 
         let status = &mut self.status[service.index()];
         self.progress_generation = self.progress_generation.wrapping_add(1);
+        status.pid = None;
         if status.restart_count >= spec.maximum_restarts {
             status.state = ServiceState::Failed;
             return Ok(());
@@ -418,6 +449,12 @@ impl Supervisor {
         }
         mask
     }
+
+    fn pid_is_active(&self, pid: u32) -> bool {
+        INITIAL_SERVICES
+            .iter()
+            .any(|spec| self.status[spec.id.index()].pid == Some(pid))
+    }
 }
 
 impl Default for Supervisor {
@@ -429,6 +466,8 @@ impl Default for Supervisor {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SupervisorError {
     InvalidTransition,
+    InvalidProcessIdentity,
+    UnknownProcess,
 }
 
 #[cfg(test)]
@@ -449,7 +488,7 @@ mod tests {
     fn starts_only_the_measured_boot_service() {
         let mut supervisor = Supervisor::new();
         assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
-        supervisor.record_started(ServiceId::Crest).unwrap();
+        supervisor.record_started(ServiceId::Crest, 2).unwrap();
         assert_eq!(supervisor.tick(), SupervisorAction::Idle);
     }
 
@@ -487,13 +526,51 @@ mod tests {
     fn crest_failure_does_not_leave_a_false_active_bit() {
         let mut supervisor = Supervisor::new();
         assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
-        supervisor.record_started(ServiceId::Crest).unwrap();
+        supervisor.record_started(ServiceId::Crest, 2).unwrap();
         assert_eq!(supervisor.active_service_mask(), 0b100);
 
         supervisor
             .record_failure(ServiceId::Crest, FailureReason::Unresponsive)
             .unwrap();
         assert_eq!(supervisor.active_service_mask(), 0);
+    }
+
+    #[test]
+    fn child_exit_is_bound_to_the_exact_live_service_pid() {
+        let mut supervisor = Supervisor::new();
+        assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
+        supervisor.record_started(ServiceId::Crest, 41).unwrap();
+        assert_eq!(supervisor.status(ServiceId::Crest).pid, Some(41));
+
+        assert_eq!(
+            supervisor.record_child_exit(42, 1),
+            Err(SupervisorError::UnknownProcess)
+        );
+        assert_eq!(
+            supervisor.status(ServiceId::Crest).state,
+            ServiceState::Running
+        );
+
+        assert_eq!(supervisor.record_child_exit(41, 0), Ok(ServiceId::Crest));
+        let service = supervisor.status(ServiceId::Crest);
+        assert_eq!(service.pid, None);
+        assert_eq!(service.state, ServiceState::Backoff);
+        assert_eq!(service.last_failure, Some(FailureReason::Exited(0)));
+    }
+
+    #[test]
+    fn a_pid_cannot_be_reused_while_its_service_is_live() {
+        let mut supervisor = Supervisor::new();
+        assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
+        assert_eq!(
+            supervisor.record_started(ServiceId::Crest, 0),
+            Err(SupervisorError::InvalidProcessIdentity)
+        );
+        supervisor.record_started(ServiceId::Crest, 7).unwrap();
+        assert_eq!(
+            supervisor.record_started(ServiceId::Crest, 7),
+            Err(SupervisorError::InvalidProcessIdentity)
+        );
     }
 
     #[test]

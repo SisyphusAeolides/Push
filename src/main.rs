@@ -154,7 +154,7 @@ pub extern "C" fn push_start_with_stack(stack_ptr: *const u8) -> ! {
                 match slope::process::spawn_service(service.id as u16) {
                     Ok(pid) => {
                         push::push_log!("[PID 1] spawned service {:?} as PID {}", service.id, pid);
-                        if supervisor.record_started(service.id).is_err() {
+                        if supervisor.record_started(service.id, pid).is_err() {
                             let _ = supervisor
                                 .record_failure(service.id, FailureReason::LaunchRejected);
                         }
@@ -184,7 +184,13 @@ pub extern "C" fn push_start_with_stack(stack_ptr: *const u8) -> ! {
         match slope::process::wait_nohang() {
             Ok(Some((pid, status))) => {
                 push::push_log!("[PID 1] child {} exited with status {}", pid, status);
-                // Simple demonstration; in a real OS we'd map PID to service.id
+                if let Err(error) = supervisor.record_child_exit(pid, status) {
+                    push::push_log!(
+                        "[PID 1] ignored unowned child exit pid={} error={:?}",
+                        pid,
+                        error
+                    );
+                }
             }
             _ => {}
         }
