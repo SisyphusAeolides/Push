@@ -2,6 +2,7 @@
 extern crate alloc;
 
 pub mod aegis;
+pub mod argus;
 pub mod chronos;
 pub mod control;
 pub mod gordian;

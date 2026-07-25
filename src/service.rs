@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicU16, AtomicU64, Ordering};
 
-pub const SERVICE_COUNT: usize = 3;
+pub const SERVICE_COUNT: usize = 4;
 pub const MAXIMUM_SERVICES: usize = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -9,6 +9,10 @@ pub enum ServiceId {
     SlopeNet = 0,
     Corinth = 1,
     Crest = 2,
+    /// Argus is catalogued separately so browser transport authority cannot
+    /// be confused with Crest's display authority. It is not booted until a
+    /// measured Argus service image and broker mapping exist.
+    Argus = 3,
 }
 
 impl ServiceId {
@@ -80,7 +84,16 @@ pub const CREST: ServiceSpec = ServiceSpec {
     backoff_ticks: 2,
 };
 
-pub const INITIAL_SERVICES: [ServiceSpec; SERVICE_COUNT] = [SLOPE_NET, CORINTH, CREST];
+pub const ARGUS: ServiceSpec = ServiceSpec {
+    id: ServiceId::Argus,
+    name: "argus",
+    executable: "/system/argus",
+    critical: false,
+    maximum_restarts: 2,
+    backoff_ticks: 8,
+};
+
+pub const INITIAL_SERVICES: [ServiceSpec; SERVICE_COUNT] = [SLOPE_NET, CORINTH, CREST, ARGUS];
 /// Services whose exact measured images are present in the current boot image.
 ///
 /// The broader catalog remains useful for capability policy, but the

@@ -155,6 +155,7 @@ impl GordianKnot {
             0 => ServiceId::SlopeNet,
             1 => ServiceId::Corinth,
             2 => ServiceId::Crest,
+            3 => ServiceId::Argus,
             _ => {
                 self.deny(sequence, DenialReason::MalformedRequest)?;
                 return Err(KnotError::MalformedRequest);
