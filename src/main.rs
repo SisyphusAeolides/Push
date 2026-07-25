@@ -65,6 +65,7 @@ impl HardwareCapabilityBroker for UnavailableBroker {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn push_start_with_stack(stack_ptr: *const u8) -> ! {
+    HEAP.init();
     push::push_log!("[PID 1] measured push engine online");
     let runtime = match unsafe {
         ProcessRuntime::initialize(
