@@ -3,6 +3,7 @@ extern crate alloc;
 
 pub mod aegis;
 pub mod chronos;
+pub mod control;
 pub mod gordian;
 pub mod init;
 pub mod logger;
