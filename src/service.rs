@@ -73,9 +73,9 @@ pub const CREST: ServiceSpec = ServiceSpec {
     name: "crest",
     executable: "/system/crest",
     critical: false,
-    // Boulder retains Crest's measured image without a runtime reset or
-    // reclamation path. A restart would reuse mutable user memory, so it is
-    // terminal until the kernel can construct a fresh verified image.
+    // Boulder reclaims a stopped Crest image only after execution leaves its
+    // page-table root. Restart remains terminal until the kernel can build a
+    // fresh verified image rather than reusing mutable user memory.
     maximum_restarts: 0,
     backoff_ticks: 2,
 };
