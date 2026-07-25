@@ -144,13 +144,21 @@ pub extern "C" fn push_start_with_stack(stack_ptr: *const u8) -> ! {
         }
         match supervisor.tick() {
             SupervisorAction::Start(service) => {
-                push::push_log!(
-                    "[PID 1] requesting '{}' critical={} restart={}/{}",
-                    service.name,
-                    service.critical,
-                    supervisor.status(service.id).restart_count,
-                    service.maximum_restarts,
-                );
+                if service.maximum_restarts == 0 {
+                    push::push_log!(
+                        "[PID 1] requesting '{}' critical={} restart=disabled",
+                        service.name,
+                        service.critical,
+                    );
+                } else {
+                    push::push_log!(
+                        "[PID 1] requesting '{}' critical={} restart={}/{}",
+                        service.name,
+                        service.critical,
+                        supervisor.status(service.id).restart_count,
+                        service.maximum_restarts,
+                    );
+                }
                 match slope::process::spawn_service(service.id as u16) {
                     Ok(pid) => {
                         push::push_log!("[PID 1] spawned service {:?} as PID {}", service.id, pid);

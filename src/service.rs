@@ -73,7 +73,10 @@ pub const CREST: ServiceSpec = ServiceSpec {
     name: "crest",
     executable: "/system/crest",
     critical: false,
-    maximum_restarts: 5,
+    // Boulder retains Crest's measured image without a runtime reset or
+    // reclamation path. A restart would reuse mutable user memory, so it is
+    // terminal until the kernel can construct a fresh verified image.
+    maximum_restarts: 0,
     backoff_ticks: 2,
 };
 
@@ -474,16 +477,6 @@ pub enum SupervisorError {
 mod tests {
     use super::*;
 
-    fn advance_until_action(supervisor: &mut Supervisor) -> SupervisorAction {
-        for _ in 0..64 {
-            let action = supervisor.tick();
-            if action != SupervisorAction::Idle {
-                return action;
-            }
-        }
-        panic!("supervisor produced no bounded action")
-    }
-
     #[test]
     fn starts_only_the_measured_boot_service() {
         let mut supervisor = Supervisor::new();
@@ -500,20 +493,12 @@ mod tests {
     }
 
     #[test]
-    fn exhausted_crest_restarts_degrade_without_recovery() {
+    fn single_use_crest_fails_without_advertising_an_impossible_restart() {
         let mut supervisor = Supervisor::new();
         assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
-        for restart in 0..=CREST.maximum_restarts {
-            supervisor
-                .record_failure(ServiceId::Crest, FailureReason::Unresponsive)
-                .unwrap();
-            if restart < CREST.maximum_restarts {
-                assert_eq!(
-                    advance_until_action(&mut supervisor),
-                    SupervisorAction::Start(CREST)
-                );
-            }
-        }
+        supervisor
+            .record_failure(ServiceId::Crest, FailureReason::Unresponsive)
+            .unwrap();
         assert_eq!(
             supervisor.status(ServiceId::Crest).state,
             ServiceState::Failed
@@ -554,7 +539,7 @@ mod tests {
         assert_eq!(supervisor.record_child_exit(41, 0), Ok(ServiceId::Crest));
         let service = supervisor.status(ServiceId::Crest);
         assert_eq!(service.pid, None);
-        assert_eq!(service.state, ServiceState::Backoff);
+        assert_eq!(service.state, ServiceState::Failed);
         assert_eq!(service.last_failure, Some(FailureReason::Exited(0)));
     }
 
