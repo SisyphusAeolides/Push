@@ -5,7 +5,7 @@
 //! and a shared Hermes endpoint. Keeping that absence explicit prevents the UI
 //! from treating a URL parser result as network authority.
 
-use slope::hypermedia::{HttpLease, HttpsRequest};
+use slope::hypermedia::{ArgusEndpointLease, HttpLease, HttpsRequest};
 
 use crate::gordian::CapabilityHandle;
 use crate::service::{ServiceId, ServiceState, Supervisor};
@@ -16,6 +16,14 @@ pub const MAX_HTTP_LEASE_EPOCHS: u64 = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HttpLeaseError {
+    WrongRequester,
+    ServiceNotRunning,
+    InvalidLifetime,
+    InvalidBrokerReply,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EndpointLeaseError {
     WrongRequester,
     ServiceNotRunning,
     InvalidLifetime,
@@ -58,6 +66,43 @@ pub fn issue_http_lease(
     }
 }
 
+/// Derives the Argus Hermes endpoint authority from two broker handles.  The
+/// endpoint and mapping remain distinct so Boulder can revoke the shared
+/// mapping before recycling its physical pages; Push never receives a
+/// physical address or a raw NIC capability.
+pub fn issue_argus_endpoint(
+    requester: ServiceId,
+    supervisor: &Supervisor,
+    endpoint_handle: CapabilityHandle,
+    mapping_handle: CapabilityHandle,
+    generation: u32,
+    mapping_generation: u32,
+    current_epoch: u64,
+    expiry_epoch: u64,
+) -> Result<ArgusEndpointLease, EndpointLeaseError> {
+    if requester != ServiceId::Argus {
+        return Err(EndpointLeaseError::WrongRequester);
+    }
+    if supervisor.status(ServiceId::Argus).state != ServiceState::Running {
+        return Err(EndpointLeaseError::ServiceNotRunning);
+    }
+    if expiry_epoch <= current_epoch || expiry_epoch - current_epoch > MAX_HTTP_LEASE_EPOCHS {
+        return Err(EndpointLeaseError::InvalidLifetime);
+    }
+    // SAFETY: both handles are opaque values returned by the authenticated
+    // broker, and the caller supplies the generation pairing it received.
+    unsafe {
+        ArgusEndpointLease::from_broker(
+            endpoint_handle.raw(),
+            mapping_handle.raw(),
+            generation,
+            mapping_generation,
+            expiry_epoch,
+        )
+        .map_err(|_| EndpointLeaseError::InvalidBrokerReply)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -77,6 +122,14 @@ mod tests {
         assert_eq!(
             issue_http_lease(ServiceId::Argus, &supervisor, handle, 1, request, 1, 2),
             Err(HttpLeaseError::ServiceNotRunning)
+        );
+        assert_eq!(
+            issue_argus_endpoint(ServiceId::Crest, &supervisor, handle, handle, 1, 1, 1, 2),
+            Err(EndpointLeaseError::WrongRequester)
+        );
+        assert_eq!(
+            issue_argus_endpoint(ServiceId::Argus, &supervisor, handle, handle, 1, 1, 1, 2),
+            Err(EndpointLeaseError::ServiceNotRunning)
         );
     }
 }
