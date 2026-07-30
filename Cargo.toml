@@ -1,17 +1,21 @@
 [package]
 name = "push"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-rust-version.workspace = true
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+repository = "https://github.com/SisyphusAeolides/Push"
+description = "Measured PID 1 and service supervisor for Arach OS"
 build = "build.rs"
 
 [features]
+default = []
 os-bin = []
+fortran-policy = []
 
 [dependencies]
 libm = "0.2.16"
-slope = { path = "../../libraries/slope" }
+slope = { git = "https://github.com/SisyphusAeolides/Slope.git", rev = "e1279f3a9c17638a70c55493b2851b011452a403" }
 
 [lib]
 path = "src/lib.rs"
@@ -22,5 +26,5 @@ path = "src/main.rs"
 required-features = ["os-bin"]
 test = false
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"

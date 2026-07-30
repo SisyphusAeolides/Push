@@ -1,7 +1,7 @@
 //! Push-side admission for Argus HTTPS leases.
 //!
 //! This module performs policy admission only. It cannot manufacture TCP,
-//! TLS, or an IPC mapping: Boulder must first supply a live network capability
+//! TLS, or an IPC mapping: Arach must first supply a live network capability
 //! and a shared Hermes endpoint. Keeping that absence explicit prevents the UI
 //! from treating a URL parser result as network authority.
 
@@ -30,7 +30,7 @@ pub enum EndpointLeaseError {
     InvalidBrokerReply,
 }
 
-/// Converts one authenticated Boulder network capability into an Argus-only
+/// Converts one authenticated Arach network capability into an Argus-only
 /// HTTPS lease. The raw broker handle stays inside the resulting opaque lease;
 /// callers receive no raw socket or generalized `NetworkCapability`.
 pub fn issue_http_lease(
@@ -52,7 +52,7 @@ pub fn issue_http_lease(
         return Err(HttpLeaseError::InvalidLifetime);
     }
     // SAFETY: `network_handle` is opaque and may only have been constructed by
-    // a Boulder-backed Push capability broker. The checked service identity,
+    // a Arach-backed Push capability broker. The checked service identity,
     // bounded request, and lifetime are retained in the derived lease.
     unsafe {
         HttpLease::from_broker(
@@ -67,7 +67,7 @@ pub fn issue_http_lease(
 }
 
 /// Derives the Argus Hermes endpoint authority from two broker handles.  The
-/// endpoint and mapping remain distinct so Boulder can revoke the shared
+/// endpoint and mapping remain distinct so Arach can revoke the shared
 /// mapping before recycling its physical pages; Push never receives a
 /// physical address or a raw NIC capability.
 pub fn issue_argus_endpoint(

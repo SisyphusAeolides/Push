@@ -156,6 +156,11 @@ impl GordianKnot {
             1 => ServiceId::Corinth,
             2 => ServiceId::Crest,
             3 => ServiceId::Argus,
+            4 => ServiceId::DbusBroker,
+            5 => ServiceId::CosmicCompositor,
+            6 => ServiceId::CosmicGreeter,
+            7 => ServiceId::CosmicSession,
+            8 => ServiceId::XdgPortal,
             _ => {
                 self.deny(sequence, DenialReason::MalformedRequest)?;
                 return Err(KnotError::MalformedRequest);
@@ -248,7 +253,7 @@ impl Default for GordianKnot {
     }
 }
 
-/// Fixed shared-memory bank. Boulder may map individual pages into a service
+/// Fixed shared-memory bank. Arach may map individual pages into a service
 /// only after authenticating that service and retaining the mapping lease.
 pub static SERVICE_KNOTS: [GordianKnot; KNOT_COUNT] = [const { GordianKnot::new() }; KNOT_COUNT];
 

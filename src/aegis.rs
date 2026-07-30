@@ -14,9 +14,11 @@ pub trait HardwareCapabilityBroker {
 pub const fn is_capability_legal(service: ServiceId, capability: CapabilityKind) -> bool {
     matches!(
         (service, capability),
-        (ServiceId::Corinth, CapabilityKind::Network)
+        (ServiceId::SlopeNet, CapabilityKind::Network)
+            | (ServiceId::Corinth, CapabilityKind::Network)
             | (ServiceId::Argus, CapabilityKind::Network)
             | (ServiceId::Crest, CapabilityKind::GpuDrm)
+            | (ServiceId::CosmicCompositor, CapabilityKind::GpuDrm)
     )
 }
 

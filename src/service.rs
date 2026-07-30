@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicU16, AtomicU64, Ordering};
 
-pub const SERVICE_COUNT: usize = 4;
+pub const SERVICE_COUNT: usize = 9;
 pub const MAXIMUM_SERVICES: usize = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -13,6 +13,11 @@ pub enum ServiceId {
     /// be confused with Crest's display authority. It is not booted until a
     /// measured Argus service image and broker mapping exist.
     Argus = 3,
+    DbusBroker = 4,
+    CosmicCompositor = 5,
+    CosmicGreeter = 6,
+    CosmicSession = 7,
+    XdgPortal = 8,
 }
 
 impl ServiceId {
@@ -77,7 +82,7 @@ pub const CREST: ServiceSpec = ServiceSpec {
     name: "crest",
     executable: "/system/crest",
     critical: false,
-    // Boulder reclaims a stopped Crest image only after execution leaves its
+    // Arach reclaims a stopped Crest image only after execution leaves its
     // page-table root. Restart remains terminal until the kernel can build a
     // fresh verified image rather than reusing mutable user memory.
     maximum_restarts: 0,
@@ -93,7 +98,73 @@ pub const ARGUS: ServiceSpec = ServiceSpec {
     backoff_ticks: 8,
 };
 
-pub const INITIAL_SERVICES: [ServiceSpec; SERVICE_COUNT] = [SLOPE_NET, CORINTH, CREST, ARGUS];
+pub const DBUS_BROKER: ServiceSpec = ServiceSpec {
+    id: ServiceId::DbusBroker,
+    name: "dbus-broker",
+    executable: "/system/dbus-broker-launch",
+    critical: true,
+    maximum_restarts: 5,
+    backoff_ticks: 4,
+};
+
+pub const COSMIC_COMPOSITOR: ServiceSpec = ServiceSpec {
+    id: ServiceId::CosmicCompositor,
+    name: "cosmic-comp",
+    executable: "/system/cosmic-comp",
+    critical: true,
+    maximum_restarts: 3,
+    backoff_ticks: 8,
+};
+
+pub const COSMIC_GREETER: ServiceSpec = ServiceSpec {
+    id: ServiceId::CosmicGreeter,
+    name: "cosmic-greeter",
+    executable: "/system/cosmic-greeter",
+    critical: true,
+    maximum_restarts: 3,
+    backoff_ticks: 8,
+};
+
+pub const COSMIC_SESSION: ServiceSpec = ServiceSpec {
+    id: ServiceId::CosmicSession,
+    name: "cosmic-session",
+    executable: "/system/cosmic-session",
+    critical: false,
+    maximum_restarts: 2,
+    backoff_ticks: 8,
+};
+
+pub const XDG_PORTAL: ServiceSpec = ServiceSpec {
+    id: ServiceId::XdgPortal,
+    name: "xdg-desktop-portal-cosmic",
+    executable: "/system/xdg-desktop-portal-cosmic",
+    critical: false,
+    maximum_restarts: 3,
+    backoff_ticks: 8,
+};
+
+pub const INITIAL_SERVICES: [ServiceSpec; SERVICE_COUNT] = [
+    SLOPE_NET,
+    CORINTH,
+    CREST,
+    ARGUS,
+    DBUS_BROKER,
+    COSMIC_COMPOSITOR,
+    COSMIC_GREETER,
+    COSMIC_SESSION,
+    XDG_PORTAL,
+];
+
+/// The measured COSMIC service set. Arach OS promotes this list into the boot
+/// set only after every executable and dependency is present in the signed
+/// system image.
+pub const COSMIC_SERVICES: [ServiceSpec; 5] = [
+    DBUS_BROKER,
+    COSMIC_COMPOSITOR,
+    COSMIC_GREETER,
+    COSMIC_SESSION,
+    XDG_PORTAL,
+];
 /// Services whose exact measured images are present in the current boot image.
 ///
 /// The broader catalog remains useful for capability policy, but the
@@ -113,6 +184,10 @@ impl ArachneMatrix {
             dependencies: [0; MAXIMUM_SERVICES],
             active_state_mask: 0,
         }
+    }
+
+    pub const fn require(&mut self, service: ServiceId, dependency: ServiceId) {
+        self.dependencies[service.index()] |= 1_u16 << dependency.index();
     }
 
     #[inline(always)]
@@ -290,7 +365,16 @@ pub struct Supervisor {
 
 impl Supervisor {
     pub const fn new() -> Self {
-        let matrix = ArachneMatrix::new();
+        let mut matrix = ArachneMatrix::new();
+        matrix.require(ServiceId::Corinth, ServiceId::SlopeNet);
+        matrix.require(ServiceId::CosmicCompositor, ServiceId::DbusBroker);
+        matrix.require(ServiceId::CosmicGreeter, ServiceId::DbusBroker);
+        matrix.require(ServiceId::CosmicGreeter, ServiceId::CosmicCompositor);
+        matrix.require(ServiceId::CosmicSession, ServiceId::DbusBroker);
+        matrix.require(ServiceId::CosmicSession, ServiceId::CosmicCompositor);
+        matrix.require(ServiceId::CosmicSession, ServiceId::CosmicGreeter);
+        matrix.require(ServiceId::XdgPortal, ServiceId::DbusBroker);
+        matrix.require(ServiceId::XdgPortal, ServiceId::CosmicSession);
         Self {
             tick: 0,
             mode: SupervisorMode::Normal,
@@ -496,6 +580,29 @@ mod tests {
         assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
         supervisor.record_started(ServiceId::Crest, 2).unwrap();
         assert_eq!(supervisor.tick(), SupervisorAction::Idle);
+    }
+
+    #[test]
+    fn cosmic_catalog_covers_the_complete_session_chain() {
+        assert_eq!(COSMIC_SERVICES[0], DBUS_BROKER);
+        assert_eq!(COSMIC_SERVICES[1], COSMIC_COMPOSITOR);
+        assert_eq!(COSMIC_SERVICES[2], COSMIC_GREETER);
+        assert_eq!(COSMIC_SERVICES[3], COSMIC_SESSION);
+        assert_eq!(COSMIC_SERVICES[4], XDG_PORTAL);
+    }
+
+    #[test]
+    fn cosmic_session_dependencies_fail_closed() {
+        let mut matrix = ArachneMatrix::new();
+        matrix.require(ServiceId::CosmicSession, ServiceId::DbusBroker);
+        matrix.require(ServiceId::CosmicSession, ServiceId::CosmicCompositor);
+        matrix.require(ServiceId::CosmicSession, ServiceId::CosmicGreeter);
+        assert!(!matrix.can_start(ServiceId::CosmicSession));
+        matrix.mark_running(ServiceId::DbusBroker);
+        matrix.mark_running(ServiceId::CosmicCompositor);
+        assert!(!matrix.can_start(ServiceId::CosmicSession));
+        matrix.mark_running(ServiceId::CosmicGreeter);
+        assert!(matrix.can_start(ServiceId::CosmicSession));
     }
 
     #[test]

@@ -10,6 +10,7 @@ pub mod init;
 pub mod logger;
 pub mod morpheus;
 pub mod noosphere;
+pub mod policy;
 pub mod service;
 #[macro_export]
 macro_rules! push_log {
