@@ -81,11 +81,15 @@ pub enum BrokerError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "cosmic-boot"))]
     use crate::gordian::KnotResponse;
+    #[cfg(not(feature = "cosmic-boot"))]
     use crate::service::SupervisorAction;
 
+    #[cfg(not(feature = "cosmic-boot"))]
     struct Broker;
 
+    #[cfg(not(feature = "cosmic-boot"))]
     impl HardwareCapabilityBroker for Broker {
         fn grant(
             &mut self,
@@ -97,6 +101,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(feature = "cosmic-boot"))]
     fn running_crest() -> Supervisor {
         let mut supervisor = Supervisor::new();
         assert!(matches!(supervisor.tick(), SupervisorAction::Start(_)));
@@ -104,6 +109,7 @@ mod tests {
         supervisor
     }
 
+    #[cfg(not(feature = "cosmic-boot"))]
     #[test]
     fn grants_an_opaque_gpu_handle_to_running_crest() {
         let supervisor = running_crest();
@@ -119,6 +125,7 @@ mod tests {
         knot.acknowledge(1).unwrap();
     }
 
+    #[cfg(not(feature = "cosmic-boot"))]
     #[test]
     fn denies_network_escalation_by_crest() {
         let supervisor = running_crest();

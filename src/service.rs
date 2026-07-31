@@ -167,9 +167,15 @@ pub const COSMIC_SERVICES: [ServiceSpec; 5] = [
 ];
 /// Services whose exact measured images are present in the current boot image.
 ///
-/// The broader catalog remains useful for capability policy, but the
-/// supervisor must never attempt to launch a name the kernel cannot resolve.
-pub const BOOT_SERVICES: [ServiceSpec; 1] = [CREST];
+/// The minimal C0 image contains only the bounded probe. A production image
+/// is compiled with `cosmic-boot` after the signed COSMIC bundle has been
+/// assembled; that profile promotes the complete session chain atomically so
+/// Push never launches a partially measured desktop.
+#[cfg(feature = "cosmic-boot")]
+pub const BOOT_SERVICES: &[ServiceSpec] = &COSMIC_SERVICES;
+
+#[cfg(not(feature = "cosmic-boot"))]
+pub const BOOT_SERVICES: &[ServiceSpec] = &[CREST];
 
 /// Fixed-capacity dependency graph. Bit N represents service N.
 #[derive(Clone, Copy)]
@@ -438,7 +444,7 @@ impl Supervisor {
             {
                 status.state = ServiceState::Starting;
                 self.progress_generation = self.progress_generation.wrapping_add(1);
-                return SupervisorAction::Start(spec);
+                return SupervisorAction::Start(*spec);
             }
             // Preserve causal ordering: later services wait until each prior
             // dependency has an acknowledged Running state.
@@ -574,12 +580,38 @@ pub enum SupervisorError {
 mod tests {
     use super::*;
 
+    #[cfg(not(feature = "cosmic-boot"))]
     #[test]
     fn starts_only_the_measured_boot_service() {
         let mut supervisor = Supervisor::new();
-        assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
-        supervisor.record_started(ServiceId::Crest, 2).unwrap();
+        let first = BOOT_SERVICES[0];
+        assert_eq!(supervisor.tick(), SupervisorAction::Start(first));
+        supervisor.record_started(first.id, 2).unwrap();
         assert_eq!(supervisor.tick(), SupervisorAction::Idle);
+    }
+
+    #[cfg(feature = "cosmic-boot")]
+    #[test]
+    fn cosmic_boot_profile_contains_the_complete_ordered_session_chain() {
+        assert_eq!(BOOT_SERVICES, &COSMIC_SERVICES);
+        assert_eq!(BOOT_SERVICES.len(), COSMIC_SERVICES.len());
+        assert_eq!(BOOT_SERVICES[0].id, ServiceId::DbusBroker);
+        assert_eq!(BOOT_SERVICES[1].id, ServiceId::CosmicCompositor);
+        assert_eq!(BOOT_SERVICES[2].id, ServiceId::CosmicGreeter);
+        assert_eq!(BOOT_SERVICES[3].id, ServiceId::CosmicSession);
+        assert_eq!(BOOT_SERVICES[4].id, ServiceId::XdgPortal);
+    }
+
+    #[cfg(feature = "cosmic-boot")]
+    #[test]
+    fn cosmic_boot_profile_advances_only_after_each_dependency_is_running() {
+        let mut supervisor = Supervisor::new();
+        assert_eq!(supervisor.tick(), SupervisorAction::Start(DBUS_BROKER));
+        supervisor.record_started(ServiceId::DbusBroker, 2).unwrap();
+        assert_eq!(
+            supervisor.tick(),
+            SupervisorAction::Start(COSMIC_COMPOSITOR)
+        );
     }
 
     #[test]
@@ -605,6 +637,7 @@ mod tests {
         assert!(matrix.can_start(ServiceId::CosmicSession));
     }
 
+    #[cfg(not(feature = "cosmic-boot"))]
     #[test]
     fn unscheduled_catalog_entries_do_not_block_crest() {
         let mut supervisor = Supervisor::new();
@@ -612,6 +645,7 @@ mod tests {
         assert_eq!(supervisor.tick(), SupervisorAction::Start(CREST));
     }
 
+    #[cfg(not(feature = "cosmic-boot"))]
     #[test]
     fn single_use_crest_fails_without_advertising_an_impossible_restart() {
         let mut supervisor = Supervisor::new();
@@ -627,6 +661,7 @@ mod tests {
         assert_eq!(supervisor.tick(), SupervisorAction::Idle);
     }
 
+    #[cfg(not(feature = "cosmic-boot"))]
     #[test]
     fn crest_failure_does_not_leave_a_false_active_bit() {
         let mut supervisor = Supervisor::new();
@@ -640,6 +675,7 @@ mod tests {
         assert_eq!(supervisor.active_service_mask(), 0);
     }
 
+    #[cfg(not(feature = "cosmic-boot"))]
     #[test]
     fn child_exit_is_bound_to_the_exact_live_service_pid() {
         let mut supervisor = Supervisor::new();
@@ -663,6 +699,7 @@ mod tests {
         assert_eq!(service.last_failure, Some(FailureReason::Exited(0)));
     }
 
+    #[cfg(not(feature = "cosmic-boot"))]
     #[test]
     fn a_pid_cannot_be_reused_while_its_service_is_live() {
         let mut supervisor = Supervisor::new();
@@ -690,6 +727,7 @@ mod tests {
         assert_eq!(horizon.measure_mass(ServiceId::Corinth), 0);
     }
 
+    #[cfg(not(feature = "cosmic-boot"))]
     #[test]
     fn thermodynamics_targets_only_a_stalled_start() {
         let mut supervisor = Supervisor::new();

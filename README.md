@@ -9,6 +9,13 @@ The service catalog includes Corinth and the full COSMIC session chain:
 COSMIC desktop portal. A service enters the measured boot set only when its
 artifact and dependencies are present in the signed Arach OS image.
 
+The default `os-bin` image remains the measured C0 bootstrap profile and
+launches only its probe service. A production desktop image must be built
+with `--features os-bin,cosmic-boot`; that immutable profile promotes the
+complete D-Bus, compositor, greeter, session, and portal chain together after
+the signed COSMIC bundle has been assembled. Push will not infer a partial
+desktop from files that happen to exist on disk.
+
 Rust implements supervision and the capability boundary. Fortran supplies an
 optional bounded priority scorer. Idris 2 gives the boot sequence a total
 transition model, and Agda proves that the greeter and session cannot skip
@@ -19,5 +26,7 @@ their required predecessor stages.
 ```sh
 cargo fmt --all -- --check
 cargo test --features fortran-policy
+## production desktop supervisor profile
+cargo check --features os-bin,cosmic-boot
 scripts/check-formal-models.sh
 ```
