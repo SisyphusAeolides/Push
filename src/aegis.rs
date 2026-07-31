@@ -80,6 +80,7 @@ pub enum BrokerError {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "cosmic-boot"))]
     use super::*;
     #[cfg(not(feature = "cosmic-boot"))]
     use crate::gordian::KnotResponse;
