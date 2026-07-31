@@ -161,6 +161,9 @@ impl GordianKnot {
             6 => ServiceId::CosmicGreeter,
             7 => ServiceId::CosmicSession,
             8 => ServiceId::XdgPortal,
+            9 => ServiceId::Seatd,
+            10 => ServiceId::Pipewire,
+            11 => ServiceId::Wireplumber,
             _ => {
                 self.deny(sequence, DenialReason::MalformedRequest)?;
                 return Err(KnotError::MalformedRequest);

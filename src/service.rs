@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicU16, AtomicU64, Ordering};
 
-pub const SERVICE_COUNT: usize = 9;
+pub const SERVICE_COUNT: usize = 12;
 pub const MAXIMUM_SERVICES: usize = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -18,6 +18,9 @@ pub enum ServiceId {
     CosmicGreeter = 6,
     CosmicSession = 7,
     XdgPortal = 8,
+    Seatd = 9,
+    Pipewire = 10,
+    Wireplumber = 11,
 }
 
 impl ServiceId {
@@ -146,6 +149,33 @@ pub const XDG_PORTAL: ServiceSpec = ServiceSpec {
     backoff_ticks: 8,
 };
 
+pub const SEATD: ServiceSpec = ServiceSpec {
+    id: ServiceId::Seatd,
+    name: "seatd",
+    executable: "/system/seatd",
+    critical: true,
+    maximum_restarts: 3,
+    backoff_ticks: 4,
+};
+
+pub const PIPEWIRE: ServiceSpec = ServiceSpec {
+    id: ServiceId::Pipewire,
+    name: "pipewire",
+    executable: "/system/pipewire",
+    critical: true,
+    maximum_restarts: 3,
+    backoff_ticks: 8,
+};
+
+pub const WIREPLUMBER: ServiceSpec = ServiceSpec {
+    id: ServiceId::Wireplumber,
+    name: "wireplumber",
+    executable: "/system/wireplumber",
+    critical: true,
+    maximum_restarts: 3,
+    backoff_ticks: 8,
+};
+
 pub const INITIAL_SERVICES: [ServiceSpec; SERVICE_COUNT] = [
     SLOPE_NET,
     CORINTH,
@@ -156,13 +186,19 @@ pub const INITIAL_SERVICES: [ServiceSpec; SERVICE_COUNT] = [
     COSMIC_GREETER,
     COSMIC_SESSION,
     XDG_PORTAL,
+    SEATD,
+    PIPEWIRE,
+    WIREPLUMBER,
 ];
 
 /// The measured COSMIC service set. Arach OS promotes this list into the boot
 /// set only after every executable and dependency is present in the signed
 /// system image.
-pub const COSMIC_SERVICES: [ServiceSpec; 5] = [
+pub const COSMIC_SERVICES: [ServiceSpec; 8] = [
+    SEATD,
     DBUS_BROKER,
+    PIPEWIRE,
+    WIREPLUMBER,
     COSMIC_COMPOSITOR,
     COSMIC_GREETER,
     COSMIC_SESSION,
@@ -376,6 +412,10 @@ impl Supervisor {
     pub const fn new() -> Self {
         let mut matrix = ArachneMatrix::new();
         matrix.require(ServiceId::Corinth, ServiceId::SlopeNet);
+        matrix.require(ServiceId::Pipewire, ServiceId::DbusBroker);
+        matrix.require(ServiceId::Wireplumber, ServiceId::DbusBroker);
+        matrix.require(ServiceId::Wireplumber, ServiceId::Pipewire);
+        matrix.require(ServiceId::CosmicCompositor, ServiceId::Seatd);
         matrix.require(ServiceId::CosmicCompositor, ServiceId::DbusBroker);
         matrix.require(ServiceId::CosmicGreeter, ServiceId::DbusBroker);
         matrix.require(ServiceId::CosmicGreeter, ServiceId::CosmicCompositor);
@@ -384,6 +424,7 @@ impl Supervisor {
         matrix.require(ServiceId::CosmicSession, ServiceId::CosmicGreeter);
         matrix.require(ServiceId::XdgPortal, ServiceId::DbusBroker);
         matrix.require(ServiceId::XdgPortal, ServiceId::CosmicSession);
+        matrix.require(ServiceId::XdgPortal, ServiceId::Pipewire);
         Self {
             tick: 0,
             mode: SupervisorMode::Normal,
@@ -598,32 +639,39 @@ mod tests {
     fn cosmic_boot_profile_contains_the_complete_ordered_session_chain() {
         assert_eq!(BOOT_SERVICES, &COSMIC_SERVICES);
         assert_eq!(BOOT_SERVICES.len(), COSMIC_SERVICES.len());
-        assert_eq!(BOOT_SERVICES[0].id, ServiceId::DbusBroker);
-        assert_eq!(BOOT_SERVICES[1].id, ServiceId::CosmicCompositor);
-        assert_eq!(BOOT_SERVICES[2].id, ServiceId::CosmicGreeter);
-        assert_eq!(BOOT_SERVICES[3].id, ServiceId::CosmicSession);
-        assert_eq!(BOOT_SERVICES[4].id, ServiceId::XdgPortal);
+        assert_eq!(BOOT_SERVICES[0].id, ServiceId::Seatd);
+        assert_eq!(BOOT_SERVICES[1].id, ServiceId::DbusBroker);
+        assert_eq!(BOOT_SERVICES[2].id, ServiceId::Pipewire);
+        assert_eq!(BOOT_SERVICES[3].id, ServiceId::Wireplumber);
+        assert_eq!(BOOT_SERVICES[4].id, ServiceId::CosmicCompositor);
+        assert_eq!(BOOT_SERVICES[5].id, ServiceId::CosmicGreeter);
+        assert_eq!(BOOT_SERVICES[6].id, ServiceId::CosmicSession);
+        assert_eq!(BOOT_SERVICES[7].id, ServiceId::XdgPortal);
     }
 
     #[cfg(feature = "cosmic-boot")]
     #[test]
     fn cosmic_boot_profile_advances_only_after_each_dependency_is_running() {
         let mut supervisor = Supervisor::new();
+        assert_eq!(supervisor.tick(), SupervisorAction::Start(SEATD));
+        supervisor.record_started(ServiceId::Seatd, 2).unwrap();
         assert_eq!(supervisor.tick(), SupervisorAction::Start(DBUS_BROKER));
-        supervisor.record_started(ServiceId::DbusBroker, 2).unwrap();
-        assert_eq!(
-            supervisor.tick(),
-            SupervisorAction::Start(COSMIC_COMPOSITOR)
-        );
+        supervisor.record_started(ServiceId::DbusBroker, 3).unwrap();
+        assert_eq!(supervisor.tick(), SupervisorAction::Start(PIPEWIRE));
+        supervisor.record_started(ServiceId::Pipewire, 4).unwrap();
+        assert_eq!(supervisor.tick(), SupervisorAction::Start(WIREPLUMBER));
     }
 
     #[test]
     fn cosmic_catalog_covers_the_complete_session_chain() {
-        assert_eq!(COSMIC_SERVICES[0], DBUS_BROKER);
-        assert_eq!(COSMIC_SERVICES[1], COSMIC_COMPOSITOR);
-        assert_eq!(COSMIC_SERVICES[2], COSMIC_GREETER);
-        assert_eq!(COSMIC_SERVICES[3], COSMIC_SESSION);
-        assert_eq!(COSMIC_SERVICES[4], XDG_PORTAL);
+        assert_eq!(COSMIC_SERVICES[0], SEATD);
+        assert_eq!(COSMIC_SERVICES[1], DBUS_BROKER);
+        assert_eq!(COSMIC_SERVICES[2], PIPEWIRE);
+        assert_eq!(COSMIC_SERVICES[3], WIREPLUMBER);
+        assert_eq!(COSMIC_SERVICES[4], COSMIC_COMPOSITOR);
+        assert_eq!(COSMIC_SERVICES[5], COSMIC_GREETER);
+        assert_eq!(COSMIC_SERVICES[6], COSMIC_SESSION);
+        assert_eq!(COSMIC_SERVICES[7], XDG_PORTAL);
     }
 
     #[test]

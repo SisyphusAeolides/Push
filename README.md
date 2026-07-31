@@ -5,16 +5,17 @@ capability brokerage and explicit recovery states. It owns lifecycle policy,
 not hardware mappings, and pins its Slope ABI to an immutable revision.
 
 The service catalog includes Corinth and the full COSMIC session chain:
-`dbus-broker`, `cosmic-comp`, `cosmic-greeter`, `cosmic-session`, and the
-COSMIC desktop portal. A service enters the measured boot set only when its
-artifact and dependencies are present in the signed Arach OS image.
+`seatd`, `dbus-broker`, `pipewire`, `wireplumber`, `cosmic-comp`,
+`cosmic-greeter`, `cosmic-session`, and the COSMIC desktop portal. A service
+enters the measured boot set only when its artifact and dependencies are
+present in the signed Arach OS image.
 
 The default `os-bin` image remains the measured C0 bootstrap profile and
 launches only its probe service. A production desktop image must be built
 with `--features os-bin,cosmic-boot`; that immutable profile promotes the
-complete D-Bus, compositor, greeter, session, and portal chain together after
-the signed COSMIC bundle has been assembled. Push will not infer a partial
-desktop from files that happen to exist on disk.
+complete seat, D-Bus, audio, compositor, greeter, session, and portal chain
+together after the signed COSMIC bundle has been assembled. Push will not
+infer a partial desktop from files that happen to exist on disk.
 
 Rust implements supervision and the capability boundary. Fortran supplies an
 optional bounded priority scorer. Idris 2 gives the boot sequence a total
