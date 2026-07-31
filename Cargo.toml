@@ -16,7 +16,7 @@ cosmic-boot = []
 
 [dependencies]
 libm = "0.2.16"
-slope = { git = "https://github.com/SisyphusAeolides/Slope.git", rev = "e1279f3a9c17638a70c55493b2851b011452a403" }
+slope = { git = "https://github.com/SisyphusAeolides/Slope.git", rev = "839b6ad9e56619eaf2eb2de382c6505fef1ba7f3" }
 
 [lib]
 path = "src/lib.rs"
