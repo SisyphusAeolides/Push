@@ -118,8 +118,11 @@ pub const COSMIC_COMPOSITOR: ServiceSpec = ServiceSpec {
 
 pub const COSMIC_GREETER: ServiceSpec = ServiceSpec {
     id: ServiceId::CosmicGreeter,
-    name: "cosmic-greeter",
-    executable: "/system/cosmic-greeter",
+    // COSMIC Greeter is a greetd session. The live image provides both the
+    // canonical cosmic-greeter.toml and the conventional config.toml alias,
+    // so the current kernel spawn ABI can start greetd without argv support.
+    name: "greetd (cosmic-greeter)",
+    executable: "/system/greetd",
     critical: true,
     maximum_restarts: 3,
     backoff_ticks: 8,
