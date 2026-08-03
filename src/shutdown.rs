@@ -272,7 +272,10 @@ mod tests {
             LifecycleAction::Terminate(ServiceId::CosmicSession)
         );
         coordinator
-            .record_exit(ServiceId::CosmicSession, ServiceId::CosmicSession as u32 + 100)
+            .record_exit(
+                ServiceId::CosmicSession,
+                ServiceId::CosmicSession as u32 + 100,
+            )
             .unwrap();
         assert_eq!(
             coordinator.tick(1, pid_for),
