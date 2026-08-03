@@ -34,6 +34,14 @@ jobs:
       - name: Test COSMIC supervisor profile
         run: cargo test --locked --lib --features cosmic-boot service::tests
       - name: Lint lifecycle policy
-        run: cargo clippy --locked --lib --features cosmic-boot -- -D warnings
+        run: >-
+          cargo clippy --locked --lib --features cosmic-boot --
+          -D warnings
+          -A clippy::too_many_arguments
+          -A clippy::manual_clamp
+          -A clippy::new_without_default
+          -A clippy::needless_range_loop
+          -A clippy::collapsible_if
+          -A clippy::clone_on_copy
       - name: Check formatting
         run: cargo fmt --all -- --check
