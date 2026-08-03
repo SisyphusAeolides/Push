@@ -191,7 +191,7 @@ pub const INITIAL_SERVICES: [ServiceSpec; SERVICE_COUNT] = [
     WIREPLUMBER,
 ];
 
-/// The measured COSMIC service set. Arach OS promotes this list into the boot
+/// The measured COSMIC service set. ArachOS promotes this list into the boot
 /// set only after every executable and dependency is present in the signed
 /// system image.
 pub const COSMIC_SERVICES: [ServiceSpec; 8] = [
