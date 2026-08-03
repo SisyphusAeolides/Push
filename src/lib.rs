@@ -12,6 +12,7 @@ pub mod morpheus;
 pub mod noosphere;
 pub mod policy;
 pub mod service;
+pub mod shutdown;
 #[macro_export]
 macro_rules! push_log {
     ($($argument:tt)*) => {{
