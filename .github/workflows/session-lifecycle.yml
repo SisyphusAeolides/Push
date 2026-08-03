@@ -1,0 +1,39 @@
+name: Session lifecycle
+
+on:
+  push:
+    paths:
+      - src/service.rs
+      - src/shutdown.rs
+      - src/lib.rs
+      - Cargo.toml
+      - Cargo.lock
+      - .github/workflows/session-lifecycle.yml
+  pull_request:
+    paths:
+      - src/service.rs
+      - src/shutdown.rs
+      - src/lib.rs
+      - Cargo.toml
+      - Cargo.lock
+      - .github/workflows/session-lifecycle.yml
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt,clippy
+      - name: Test minimal supervisor lifecycle
+        run: cargo test --locked --lib shutdown::tests
+      - name: Test COSMIC supervisor profile
+        run: cargo test --locked --lib --features cosmic-boot service::tests
+      - name: Lint lifecycle policy
+        run: cargo clippy --locked --lib --features cosmic-boot -- -D warnings
+      - name: Check formatting
+        run: cargo fmt --all -- --check
