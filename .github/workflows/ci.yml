@@ -17,8 +17,8 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
-      - run: cargo test --features fortran-policy
-      - run: git diff --check
+      - run: cargo test --locked --features fortran-policy
+      - run: git diff --check && git diff --exit-code
 
   idris-agda:
     runs-on: ubuntu-24.04
